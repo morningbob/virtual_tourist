@@ -120,7 +120,14 @@ class MapViewController: UIViewController, UIGestureRecognizerDelegate,
       annotation.coordinate = coordinate
       annotation.pinId = self.pinSelected.uuidString
       mapView.addAnnotation(annotation)
+      
+      self.prepareAndNavigateToPhotoVC(selectedPinId: self.pinSelected.uuidString ?? "")
     }
+    
+    // save new pin and new associated photos
+    //try? dataController.viewContext.save()
+    // navigate to photoVC
+    
   }
   
   func getPhotosFromLocation() {
@@ -181,7 +188,28 @@ class MapViewController: UIViewController, UIGestureRecognizerDelegate,
     return region
   }
   
-  
+  func prepareAndNavigateToPhotoVC(selectedPinId: String) {
+    let fetchRequest: NSFetchRequest<Pin> = Pin.fetchRequest()
+    fetchRequest.predicate = NSPredicate(format: "uuidString = %@", selectedPinId)
+    
+    if let results = try? dataController.viewContext.fetch(fetchRequest) {
+      if results.count <= 0 {
+        // No object found
+        print("can't find the pin")
+        // show toast, no picture
+      } else {
+        self.pinSelected = results[0]
+        print("got the pin")
+        // navigate to PhotoVC
+        let photoVC = self.storyboard!.instantiateViewController(identifier: "PhotosCollectionViewController") as! PhotosCollectionViewController
+        
+        photoVC.pictures = self.pictures
+        photoVC.dataController = self.dataController
+        photoVC.pin = self.pinSelected
+        self.navigationController!.pushViewController(photoVC, animated: true)
+      }
+    }
+  }
   
   func presentAlert(title: String, message: String) {
     let alert = UIAlertController(
@@ -236,13 +264,13 @@ class MapViewController: UIViewController, UIGestureRecognizerDelegate,
     self.selectedAnnotation = view.annotation as? CustomAnnotation
     // check if the selected pin has any picture
 
-    let fetchRequest: NSFetchRequest<Pin> = Pin.fetchRequest()
+    //let fetchRequest: NSFetchRequest<Pin> = Pin.fetchRequest()
     if let selectedPinId = self.selectedAnnotation?.pinId! {
     // retrieve the pin
-      
-      fetchRequest.predicate = NSPredicate(format: "uuidString = %@", selectedPinId)
+      self.prepareAndNavigateToPhotoVC(selectedPinId: selectedPinId)
+      //fetchRequest.predicate = NSPredicate(format: "uuidString = %@", selectedPinId)
     }
-
+/*
     if let results = try? dataController.viewContext.fetch(fetchRequest) {
       if results.count <= 0 {
         // No object found
@@ -260,7 +288,9 @@ class MapViewController: UIViewController, UIGestureRecognizerDelegate,
         self.navigationController!.pushViewController(photoVC, animated: true)
       }
     }
+ */
   }
+ 
     
 }
 

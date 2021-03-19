@@ -28,26 +28,5 @@ class PhotosDownloader {
     
     return photo_structs
   }
-    /*
-    func createPictures(pin: Pin) {
-      
-      for photo in photos_structs {
-        let flickrPhoto = FlickrPhoto(farm: photo.farm, server: photo.server, id: photo.id, secret: photo.secret)
 
-        flickrPhoto.loadImage() {
-          error in
-            if error != nil {
-              print("error in loading photo")
-            } else {
-              let picture = Picture(context: self.dataController.viewContext)
-              picture.id = UUID()
-              picture.url = flickrPhoto.flickrImageURL()
-              picture.image = flickrPhoto.image!.pngData()
-              picture.pin = pin
-              //self.pictures.append(picture)
-            }
-        }
-      }
-    }
- */
 }

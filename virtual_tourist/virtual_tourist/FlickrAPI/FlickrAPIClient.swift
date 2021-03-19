@@ -15,11 +15,11 @@ class FlickrAPIClient {
   enum Endpoints {
     static let base = "https://www.flickr.com/services/rest/?method=flickr.photos.search"
     
-    case findPlace(String, Double, Double)
+    case findPlace(String, Double, Double, Int)
     
     var stringValue: String {
       switch self {
-      case .findPlace(let apiKey, let lat, let lon): return Endpoints.base + "&api_key=\(apiKey)&lat=\(lat)&lon=\(lon)&accuracy=16&format=json"
+      case .findPlace(let apiKey, let lat, let lon, let page): return Endpoints.base + "&api_key=\(apiKey)&lat=\(lat)&lon=\(lon)&accuracy=16&page=\(page)&format=json"
       }
     }
     
@@ -112,7 +112,8 @@ class FlickrAPIClient {
   
   
   class func findingPlace(apiKey: String, lat: Double, lon: Double, completion: @escaping (FindPlaceResponse?, Error?) -> Void) {
-    taskForFindingPlaceGETRequest(url: Endpoints.findPlace(apiKey, lat, lon).url, responseType: FindPlaceResponse.self) { response, error in
+    let page = Int.random(in: 1..<101)
+    taskForFindingPlaceGETRequest(url: Endpoints.findPlace(apiKey, lat, lon, page).url, responseType: FindPlaceResponse.self) { response, error in
       if let response = response {
         completion(response, nil)
       } else {

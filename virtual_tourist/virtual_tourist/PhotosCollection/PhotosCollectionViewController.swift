@@ -9,34 +9,67 @@ import UIKit
 import MapKit
 import CoreData
 
-class PhotosCollectionViewController: UICollectionViewController{
+class PhotosCollectionViewController: UICollectionViewController,
+                                      UICollectionViewDelegateFlowLayout
+                                      {
   
   let apiKey = "c486a7ffc8d1a14c2dfa6543070e2b7a"
 
   var pictures = [Picture]()
   var dataController : DataController!
   var image: UIImage!
-  var downloadList = [Int]()
-  var picturesToSave = [Picture]()
-  var picturesToDelete = [Picture]()
   var pin: Pin!
-  var pictureIndexToSave = [Int]()
   var fetchedResultsControllerPictures: NSFetchedResultsController<Picture>!
   var photo_structs = [Photo]()
   var blockOperations: [BlockOperation] = []
+  var date = Date()
+  var picture : Picture!
+  
+  @IBOutlet weak var flowLayout: UICollectionViewFlowLayout!
   
   
   override func viewDidLoad() {
     super.viewDidLoad()
-    self.collectionView.allowsMultipleSelection = true
+    //self.collectionView.allowsMultipleSelection = true
     setupFetchedResultControllerPictures()
+   
+    
+    let space:CGFloat = 3.0
+    let dimension = (view.frame.size.width - (2 * space)) / 3.0
+    
+    flowLayout.minimumInteritemSpacing = space
+    flowLayout.minimumLineSpacing = space
+    flowLayout.itemSize = CGSize(width: dimension, height: dimension)
   }
   
   func setupFetchedResultControllerPictures() {
     let fetchRequest: NSFetchRequest<Picture> = Picture.fetchRequest()
     let predicate = NSPredicate(format: "pin == %@", pin)
     fetchRequest.predicate = predicate
-    let sortDescriptor = NSSortDescriptor(key: "id", ascending: false)
+    let sortDescriptor = NSSortDescriptor(key: "date", ascending: false)
+    fetchRequest.sortDescriptors = [sortDescriptor]
+    
+    fetchedResultsControllerPictures = NSFetchedResultsController(fetchRequest: fetchRequest, managedObjectContext: dataController.viewContext, sectionNameKeyPath: nil, cacheName: nil)
+    
+    fetchedResultsControllerPictures.delegate = self
+    
+    do {
+      try fetchedResultsControllerPictures.performFetch()
+    } catch {
+      fatalError("The fetch could not be performed: \(error.localizedDescription)")
+    }
+   
+  }
+  
+  func fetchNewCollection() {
+    let fetchRequest: NSFetchRequest<Picture> = Picture.fetchRequest()
+    let pinPredicate = NSPredicate(format: "pin == %@", pin)
+    let datePredicate = NSPredicate(format: "date >= %@", date as NSDate)
+    let subpredicates: [NSPredicate]
+    subpredicates = [pinPredicate, datePredicate]
+    let compoundPredicate = NSCompoundPredicate(andPredicateWithSubpredicates: subpredicates)
+    fetchRequest.predicate = compoundPredicate
+    let sortDescriptor = NSSortDescriptor(key: "date", ascending: false)
     fetchRequest.sortDescriptors = [sortDescriptor]
     
     fetchedResultsControllerPictures = NSFetchedResultsController(fetchRequest: fetchRequest, managedObjectContext: dataController.viewContext, sectionNameKeyPath: nil, cacheName: nil)
@@ -74,6 +107,11 @@ class PhotosCollectionViewController: UICollectionViewController{
     print(fetchedResultsControllerPictures.sections?[0].numberOfObjects)
   }
   
+  func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
+    return CGSize(width: collectionView.frame.size.width/3, height: collectionView.frame.size.width/3)
+    }
+  
+  
   @IBAction func downloadAction(_ sender: UIBarButtonItem) {
     // start the download task
     // save the photos downloaded
@@ -81,17 +119,23 @@ class PhotosCollectionViewController: UICollectionViewController{
    
     self.photo_structs = PhotosDownloader.downloadPhotos(pin: pin) { photos in
       self.createPictures(photos: photos)
-      try? self.dataController.viewContext.save()
-      self.setupFetchedResultControllerPictures()
-      print("after fetch now")
-      print(self.fetchedResultsControllerPictures.sections?[0].numberOfObjects)
+
     }
   
   }
-  
-  func createPictures(photos: [Photo]) {
+  // completion: @escaping (ResponseType?, Error?) -> Void
+  func createPictures(photos: [Photo] ) {
     print("create pictures ran")
     print(photos.count)
+    if photos.count == 0 {
+      self.presentAlert(title: "Photos", message: "No photo available.")
+      return
+    }
+    let group = DispatchGroup()
+    group.enter()
+    // get the date and time for the first picture in the new collection
+    // to use in fetching new colleciton
+    date = Date()
     for photo in photos {
       let flickrPhoto = FlickrPhoto(farm: photo.farm, server: photo.server, id: photo.id, secret: photo.secret)
 
@@ -106,11 +150,21 @@ class PhotosCollectionViewController: UICollectionViewController{
             picture.url = flickrPhoto.flickrImageURL()
             picture.image = flickrPhoto.image!.pngData()
             picture.pin = self.pin
-            self.pictures.append(picture)
-            print("loading photo succeeded")
-           
+            picture.date = Date()
+          
           }
       }
+    }
+    print("finished creating photos")
+    group.leave()
+    group.wait()
+
+    try? self.dataController.viewContext.save()
+    self.fetchNewCollection()
+    print("after fetch now")
+    print(self.fetchedResultsControllerPictures.sections?[0].numberOfObjects)
+    DispatchQueue.main.async {
+      self.presentAlert(title: "Download Photos", message: "Downloaded 250 new photos.")
     }
   }
   
@@ -144,7 +198,11 @@ extension PhotosCollectionViewController: NSFetchedResultsControllerDelegate {
             self?.collectionView!.insertItems(at: [newIndexPath!])
           }
         })
+        
       )
+      DispatchQueue.main.async {
+        self.collectionView.reloadData()
+      }
     }
     else if type == NSFetchedResultsChangeType.update {
       print("Update Object: \(String(describing: indexPath))")
@@ -155,6 +213,9 @@ extension PhotosCollectionViewController: NSFetchedResultsControllerDelegate {
           }
         })
       )
+      DispatchQueue.main.async {
+        self.collectionView.reloadData()
+      }
     }
     else if type == NSFetchedResultsChangeType.move {
       print("Move Object: \(String(describing: indexPath))")
@@ -166,6 +227,9 @@ extension PhotosCollectionViewController: NSFetchedResultsControllerDelegate {
           }
         })
       )
+      DispatchQueue.main.async {
+        self.collectionView.reloadData()
+      }
     }
     else if type == NSFetchedResultsChangeType.delete {
       print("Delete Object: \(String(describing: indexPath))")
@@ -177,6 +241,9 @@ extension PhotosCollectionViewController: NSFetchedResultsControllerDelegate {
           }
         })
       )
+      DispatchQueue.main.async {
+        self.collectionView.reloadData()
+      }
     }
   }
 
@@ -191,6 +258,9 @@ extension PhotosCollectionViewController: NSFetchedResultsControllerDelegate {
           }
         })
       )
+      DispatchQueue.main.async {
+        self.collectionView.reloadData()
+      }
     }
     else if type == NSFetchedResultsChangeType.update {
       print("Update Section: \(sectionIndex)")
@@ -201,6 +271,9 @@ extension PhotosCollectionViewController: NSFetchedResultsControllerDelegate {
           }
         })
       )
+      DispatchQueue.main.async {
+        self.collectionView.reloadData()
+      }
     }
     else if type == NSFetchedResultsChangeType.delete {
       print("Delete Section: \(sectionIndex)")
@@ -212,63 +285,18 @@ extension PhotosCollectionViewController: NSFetchedResultsControllerDelegate {
           }
         })
       )
+      DispatchQueue.main.async {
+        self.collectionView.reloadData()
+      }
     }
   }
 }
 
-/*
-
-extension PhotosCollectionViewController: UINavigationControllerDelegate {
-  func navigationController(_ navigationController: UINavigationController, willShow viewController: UIViewController, animated: Bool) {
-    if let pinVC = viewController as? PinListViewController {
-      pinVC.dataController = self.dataController
-    }
-  }
-}
-
-extension PhotosCollectionViewController:NSFetchedResultsControllerDelegate {
-    
-  func controller(_ controller: NSFetchedResultsController<NSFetchRequestResult>, didChange anObject: Any, at indexPath: IndexPath?, for type: NSFetchedResultsChangeType, newIndexPath: IndexPath?) {
-    switch type {
-    case .insert:
-        collectionView.insertItems(at: [newIndexPath!])
-        break
-    case .delete:
-        collectionView.deleteItems(at: [indexPath!])
-        break
-    case .update:
-        collectionView.reloadItems(at: [indexPath!])
-    case .move:
-        collectionView.moveItem(at: indexPath!, to: newIndexPath!)
-    }
-  }
-  
-  func controller(_ controller: NSFetchedResultsController<NSFetchRequestResult>, didChange sectionInfo: NSFetchedResultsSectionInfo, atSectionIndex sectionIndex: Int, for type: NSFetchedResultsChangeType) {
-    let indexSet = IndexSet(integer: sectionIndex)
-    switch type {
-    case .insert: collectionView.insertSections(indexSet)
-    case .delete: collectionView.deleteSections(indexSet)
-    case .update, .move:
-        fatalError("Invalid change type in controller(_:didChange:atSectionIndex:for:). Only .insert or .delete should be possible.")
-    }
-  }
-  
-  
-  func controllerWillChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
-    //collectionView.reloadData()
-  }
-  
-  func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
-    collectionView.reloadData()
-  }
-  
-}
- */
 
 class PhotoCollectionViewCell: UICollectionViewCell {
   
   @IBOutlet weak var photoImageView: UIImageView!
-  
+  /*
   override var isSelected: Bool {
     didSet {
       if isSelected {
@@ -279,39 +307,7 @@ class PhotoCollectionViewCell: UICollectionViewCell {
       }
     }
   }
-  
+  */
 
 }
 
-/*
-    loadImage(url: picture.url!) { error in
-      if error != nil {
-        print("error in loading")
-      }
-      DispatchQueue.main.async {
-        cell.photoImageView?.image = self.image
-      }
-    }
- 
- func loadImage(url: URL, completion: @escaping (Error?) -> Void) {
-   
-   let request = URLRequest(url: url)
-   
-   let task = URLSession.shared.dataTask(with: request) { data, response, error in
-     if let error = error {
-       completion(error)
-       return
-     }
-     
-     guard let data = data else {
-       completion(error)
-       return
-     }
-     
-     self.image = UIImage(data: data)
-     
-     completion(nil)
-   }
-   task.resume()
- }
-   */
